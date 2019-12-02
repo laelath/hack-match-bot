@@ -450,21 +450,3 @@ pub fn play_path(display: *mut Display, path: Vec<Move>) {
         }
     }
 }
-
-pub fn play_trim_path(display: *mut Display, path: Vec<Move>, board: &Board) {
-    let mut nboard = board.clone();
-    for m in path {
-        if nboard.has_match() {
-            println!("Stopping path early");
-            return;
-        }
-
-        nboard = nboard.do_move(m);
-        match m {
-            Move::Left => move_left(display),
-            Move::Right => move_right(display),
-            Move::Swap => swap(display),
-            Move::Exchange => exchange(display),
-        }
-    }
-}

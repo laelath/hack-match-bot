@@ -6,8 +6,7 @@ extern crate scopeguard;
 
 use board::{Board, Item, Move};
 
-use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -15,38 +14,8 @@ use x11::xlib;
 use x11::xlib::{Display, Window};
 
 const MAX_SEARCH_TIME: Duration = Duration::from_millis(200);
-const BOARD_SOLVE_WAIT: Duration = Duration::from_millis(4 * screen::KEY_DELAY_MILLIS + 3);
+const BOARD_SOLVE_WAIT: Duration = Duration::from_millis(2 * screen::KEY_DELAY_MILLIS + 3);
 const SCREEN_READ_FAIL_LIMIT: usize = 25;
-
-struct BoardScore {
-    board: Board,
-    path: Vec<Move>,
-    score: f64,
-}
-
-impl PartialEq for BoardScore {
-    fn eq(&self, other: &Self) -> bool {
-        self.score == other.score
-    }
-}
-
-impl Eq for BoardScore {}
-
-// First match on score, then match on path length
-impl PartialOrd for BoardScore {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match other.score.partial_cmp(&self.score) {
-            Some(ord) => Some(ord.then(other.path.len().cmp(&self.path.len()))),
-            None => None,
-        }
-    }
-}
-
-impl Ord for BoardScore {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
-    }
-}
 
 fn find_match(_display: *mut Display, _window: Window, start: &Board) -> Vec<Move> {
     if start.has_match() {
@@ -55,10 +24,8 @@ fn find_match(_display: *mut Display, _window: Window, start: &Board) -> Vec<Mov
     }
 
     let start_time = Instant::now();
-    // let mut check_time = Instant::now();
 
     let mut boards = VecDeque::new();
-    // let mut boards = BinaryHeap::new();
     let mut seen = HashSet::new();
 
     let mut highest_score = start.score();
@@ -69,7 +36,6 @@ fn find_match(_display: *mut Display, _window: Window, start: &Board) -> Vec<Mov
 
     seen.insert(start.clone());
     boards.push_back((start.clone(), vec![]));
-    // boards.push(BoardScore { board: start.clone(), path: vec![], score: start.score() });
 
     while !boards.is_empty() {
         /*if Instant::now().duration_since(check_time) >= BOARD_SOLVE_WAIT {
@@ -186,8 +152,15 @@ fn get_new_board(display: *mut Display, window: Window, prev_board: &mut Board) 
                 }
                 *prev_board = board;
             }
-            None => (),
+            None => {
+                if failed >= SCREEN_READ_FAIL_LIMIT {
+                    println!("Failed to read screen too many times, exiting");
+                    std::process::exit(0);
+                }
+                failed += 1;
+            }
         }
+        thread::sleep(BOARD_SOLVE_WAIT);
     }
     */
 }

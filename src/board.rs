@@ -195,33 +195,6 @@ impl Board {
         false
     }
 
-    fn count_blocks(&self, item: Item) -> usize {
-        let count = self
-            .blocks
-            .iter()
-            .flat_map(|r| r.iter())
-            .filter(|e| **e == item)
-            .count();
-
-        if self.held == item {
-            count + 1
-        } else {
-            count
-        }
-    }
-
-    pub fn can_make_match(&self) -> bool {
-        for color in [Red, Yellow, Blue, Cyan, Pink].iter() {
-            if self.count_blocks(File(*color)) >= 4 {
-                return true;
-            } else if self.count_blocks(Bomb(*color)) >= 2 {
-                return true;
-            }
-        }
-
-        false
-    }
-
     fn tallest_col(&self) -> (usize, usize) {
         let mut max = 0;
         let mut max_col = 0;
@@ -239,6 +212,7 @@ impl Board {
         (max, max_col)
     }
 
+    /*
     fn shortest_col(&self) -> (usize, usize) {
         let mut min = MAX_COLS;
         let mut min_col = 0;
@@ -254,43 +228,6 @@ impl Board {
             }
         }
         (min, min_col)
-    }
-
-    /*
-    pub fn imbalance(&self) -> usize {
-        let (min, _) = self.shortest_col();
-        let (max, _) = self.tallest_col();
-
-        max - min
-    }
-    */
-
-    /*
-    pub fn solve_imbalance(&self) -> Vec<Move> {
-        let (_, min_col) = self.shortest_col();
-        let (_, max_col) = self.tallest_col();
-
-        let mut path = vec![];
-
-        if self.held == Empty {
-            // pick block from tallest column
-            if self.phage_col < max_col {
-                path.append(&mut vec![Move::Right; max_col - self.phage_col]);
-            } else if self.phage_col > max_col {
-                path.append(&mut vec![Move::Left; self.phage_col - max_col]);
-            }
-            path.push(Move::Exchange);
-        } else {
-            // place block on smallest column
-            if self.phage_col < min_col {
-                path.append(&mut vec![Move::Right; min_col - self.phage_col]);
-            } else if self.phage_col > min_col {
-                path.append(&mut vec![Move::Left; self.phage_col - min_col]);
-            }
-            path.push(Move::Exchange);
-        }
-
-        path
     }
     */
 
@@ -308,16 +245,12 @@ impl Board {
         heights
     }
 
-    // board imbalance is the difference between the mean and median column heights
     // board imbalance is the sum of squares of differences from the mean column height
     fn imbalance(&self) -> f64 {
         let heights = self.column_heights();
-        // heights.sort_unstable();
 
         let sum: usize = heights.iter().sum();
         let mean = sum as f64 / heights.len() as f64;
-
-        // let median = heights[heights.len() / 2];
 
         heights.iter().map(|h| (*h as f64 - mean).powi(2)).sum()
     }
