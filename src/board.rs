@@ -20,6 +20,8 @@ pub enum Color {
 pub enum Item {
     File(Color),
     Bomb(Color),
+    Unknown,
+    Empty,
 }
 
 impl fmt::Display for Color {
@@ -39,6 +41,8 @@ impl fmt::Display for Item {
         match self {
             File(c) => write!(f, "{}", c),
             Bomb(c) => write!(f, "{}", c.to_string().to_uppercase()),
+            Unknown => write!(f, "X"),
+            Empty => write!(f, " "),
         }
     }
 }
@@ -46,8 +50,8 @@ impl fmt::Display for Item {
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Board {
     phage_col: usize,
-    held: Option<Item>,
-    blocks: [[Option<Item>; MAX_COLS]; MAX_ROWS],
+    held: Item,
+    blocks: [[Item; MAX_COLS]; MAX_ROWS],
 }
 
 #[derive(Copy, Clone)]
@@ -96,10 +100,12 @@ impl Board {
     }
 
     fn exchange_held(&mut self) {
-        if self.held == None {
+        if self.held == Empty {
             // Find a block to grab
             for row in (0..MAX_ROWS).rev() {
-                if self.blocks[row][self.phage_col] != None {
+                if self.blocks[row][self.phage_col] == Unknown {
+                    break;
+                } else if self.blocks[row][self.phage_col] != Empty {
                     mem::swap(&mut self.held, &mut self.blocks[row][self.phage_col]);
                     break;
                 }
@@ -107,7 +113,7 @@ impl Board {
         } else {
             // Try and place held block
             for row in 0..MAX_ROWS {
-                if self.blocks[row][self.phage_col] == None {
+                if self.blocks[row][self.phage_col] == Empty {
                     mem::swap(&mut self.held, &mut self.blocks[row][self.phage_col]);
                     break;
                 }
@@ -117,7 +123,11 @@ impl Board {
 
     fn swap_blocks(&mut self) {
         for row in (1..MAX_ROWS).rev() {
-            if self.blocks[row][self.phage_col] != None {
+            if self.blocks[row][self.phage_col] == Unknown
+                || self.blocks[row - 1][self.phage_col] == Unknown
+            {
+                break;
+            } else if self.blocks[row][self.phage_col] != Empty {
                 let (a, b) = self.blocks.split_at_mut(row);
                 mem::swap(&mut a[row - 1][self.phage_col], &mut b[0][self.phage_col]);
                 break;
@@ -136,7 +146,7 @@ impl Board {
             return 0;
         }
 
-        if self.blocks[row][col] != Some(b) {
+        if self.blocks[row][col] != b {
             return 0;
         }
 
@@ -165,19 +175,19 @@ impl Board {
 
         for row in 0..MAX_ROWS {
             for col in 0..MAX_COLS {
-                match self.blocks[row][col] {
-                    Some(b) => {
-                        let group_size = self.group_size(row, col, b, &mut visited);
-                        let match_size = match b {
-                            File(_) => 4,
-                            Bomb(_) => 2,
-                        };
+                let b = self.blocks[row][col];
+                if b != Empty && b != Unknown {
+                    let group_size = self.group_size(row, col, b, &mut visited);
+                    let match_size = match b {
+                        File(_) => 4,
+                        Bomb(_) => 2,
+                        Unknown => panic!("Cannot find group size of unknown item"),
+                        Empty => panic!("Cannot find group size of empty item"),
+                    };
 
-                        if group_size >= match_size {
-                            return true;
-                        }
+                    if group_size >= match_size {
+                        return true;
                     }
-                    None => {}
                 }
             }
         }
@@ -190,18 +200,13 @@ impl Board {
             .blocks
             .iter()
             .flat_map(|r| r.iter())
-            .filter(|e| **e == Some(item))
+            .filter(|e| **e == item)
             .count();
 
-        match self.held {
-            Some(held) => {
-                if held == item {
-                    count + 1
-                } else {
-                    count
-                }
-            }
-            None => count,
+        if self.held == item {
+            count + 1
+        } else {
+            count
         }
     }
 
@@ -222,15 +227,12 @@ impl Board {
         let mut max_col = 0;
         for col in 0..MAX_COLS {
             for row in 0..MAX_ROWS {
-                match self.blocks[row][col] {
-                    Some(_) => (),
-                    None => {
-                        if row > max {
-                            max = row;
-                            max_col = col;
-                        }
-                        break;
+                if self.blocks[row][col] == Empty {
+                    if row > max {
+                        max = row;
+                        max_col = col;
                     }
+                    break;
                 }
             }
         }
@@ -242,93 +244,140 @@ impl Board {
         let mut min_col = 0;
         for col in 0..MAX_COLS {
             for row in 0..MAX_ROWS {
-                match self.blocks[row][col] {
-                    Some(_) => (),
-                    None => {
-                        if row < min {
-                            min = row;
-                            min_col = col;
-                        }
-                        break;
+                if self.blocks[row][col] == Empty {
+                    if row < min {
+                        min = row;
+                        min_col = col;
                     }
+                    break;
                 }
             }
         }
         (min, min_col)
     }
 
+    /*
     pub fn imbalance(&self) -> usize {
         let (min, _) = self.shortest_col();
         let (max, _) = self.tallest_col();
 
         max - min
     }
+    */
 
+    /*
     pub fn solve_imbalance(&self) -> Vec<Move> {
         let (_, min_col) = self.shortest_col();
         let (_, max_col) = self.tallest_col();
 
-        let mut path = vec!();
-        let mut curr_col = self.phage_col;
+        let mut path = vec![];
 
-        if self.held.is_none() {
+        if self.held == Empty {
             // pick block from tallest column
-            if curr_col < max_col {
-                path.append(&mut vec![Move::Right; max_col - curr_col]);
-            } else if curr_col > max_col {
-                path.append(&mut vec![Move::Left; curr_col - max_col]);
+            if self.phage_col < max_col {
+                path.append(&mut vec![Move::Right; max_col - self.phage_col]);
+            } else if self.phage_col > max_col {
+                path.append(&mut vec![Move::Left; self.phage_col - max_col]);
             }
-
             path.push(Move::Exchange);
-            curr_col = max_col;
+        } else {
+            // place block on smallest column
+            if self.phage_col < min_col {
+                path.append(&mut vec![Move::Right; min_col - self.phage_col]);
+            } else if self.phage_col > min_col {
+                path.append(&mut vec![Move::Left; self.phage_col - min_col]);
+            }
+            path.push(Move::Exchange);
         }
-
-        // place block on smallest column
-        if curr_col < min_col {
-            path.append(&mut vec![Move::Right; min_col - curr_col]);
-        } else if curr_col > min_col {
-            path.append(&mut vec![Move::Left; curr_col - min_col]);
-        }
-
-        path.push(Move::Exchange);
 
         path
+    }
+    */
+
+    fn column_heights(&self) -> [usize; MAX_COLS] {
+        let mut heights = [0; MAX_COLS];
+        for col in 0..MAX_COLS {
+            for row in (0..MAX_ROWS).rev() {
+                let b = self.blocks[row][col];
+                if b != Empty {
+                    heights[col] = row;
+                    break;
+                }
+            }
+        }
+        heights
+    }
+
+    // board imbalance is the difference between the mean and median column heights
+    // board imbalance is the sum of squares of differences from the mean column height
+    fn imbalance(&self) -> f64 {
+        let heights = self.column_heights();
+        // heights.sort_unstable();
+
+        let sum: usize = heights.iter().sum();
+        let mean = sum as f64 / heights.len() as f64;
+
+        // let median = heights[heights.len() / 2];
+
+        heights.iter().map(|h| (*h as f64 - mean).powi(2)).sum()
+    }
+
+    pub fn score(&self) -> f64 {
+        let mut score = 0.0;
+        let mut visited = [[false; MAX_COLS]; MAX_ROWS];
+
+        for row in 0..MAX_ROWS {
+            for col in 0..MAX_COLS {
+                if !visited[row][col] {
+                    let b = self.blocks[row][col];
+                    if b != Empty && b != Unknown {
+                        let group_size = self.group_size(row, col, b, &mut visited);
+                        score += (group_size.pow(2)) as f64;
+                    }
+                }
+            }
+        }
+
+        // Add one if holding a block so it doesn't prefer placing it
+        if self.held != Empty {
+            score += 1.0;
+        }
+
+        let (max, _) = self.tallest_col();
+        // let (min, _) = self.shortest_col();
+        // assert!(min <= max);
+        // score -= ((max - min).pow(2)) as f64;
+
+        score -= self.imbalance().powi(2);
+        score -= max as f64;
+
+        score
     }
 
     pub fn print(&self) {
         for row in self.blocks[..].iter() {
-            print!(" ");
-            for opt in row {
-                match opt {
-                    Some(b) => print!("{}", b),
-                    None => print!(" "),
-                }
+            print!("|");
+            for item in row {
+                print!("{}", item);
             }
-            println!();
+            println!("|");
         }
 
-        for _ in 0..self.phage_col {
-            print!(" ");
-        }
-
-        match &self.held {
-            Some(b) => print!("<{}>", b),
-            None => print!("<->"),
-        }
-
-        for _ in self.phage_col..MAX_COLS {
-            print!(" ");
-        }
-
-        println!();
+        println!(
+            "|{}^{}|",
+            " ".repeat(self.phage_col),
+            " ".repeat(MAX_COLS - self.phage_col - 1)
+        );
+        println!(
+            "|{}{}{}|",
+            " ".repeat(self.phage_col),
+            self.held,
+            " ".repeat(MAX_COLS - self.phage_col - 1)
+        );
     }
 }
 
-pub fn make_board(
-    phage_col: usize,
-    held: Option<Item>,
-    items: [[Option<Item>; MAX_COLS]; MAX_ROWS],
-) -> Board {
+pub fn make_board(phage_col: usize, held: Item, items: [[Item; MAX_COLS]; MAX_ROWS]) -> Board {
     Board {
         phage_col: phage_col,
         held: held,

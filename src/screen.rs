@@ -94,6 +94,9 @@ const PHAGE_PINK_DATA: [u8; 32] = [
     0, 150, 0, 224, 0, 149, 4, 222, 0,
 ];
 
+// TODO: check for pieces that are currently in a match
+// (right now only finds them if they're under an item)
+
 fn screenshot_game(display: *mut Display, window: Window) -> *mut XImage {
     let img_ptr = unsafe {
         xlib::XGetImage(
@@ -128,41 +131,41 @@ fn image_compare(d1: &[u8], d2: &[u8]) -> bool {
     true
 }
 
-fn item_from_data(data: &[u8], offset: usize) -> Option<Item> {
+fn item_from_data(data: &[u8], offset: usize) -> Item {
     let pixel = Pixel(data[offset + 2], data[offset + 1], data[offset]);
 
     if pixel_compare(pixel, YELLOW_PIXEL) {
         if image_compare(&data[offset..], &YELLOW_DATA) {
-            return Some(Item::File(Color::Yellow));
+            return Item::File(Color::Yellow);
         }
     } else if pixel_compare(pixel, CYAN_PIXEL) {
         if image_compare(&data[offset..], &CYAN_DATA) {
-            return Some(Item::File(Color::Cyan));
+            return Item::File(Color::Cyan);
         }
     } else if pixel_compare(pixel, RED_PIXEL) {
         if image_compare(&data[offset..], &RED_DATA) {
-            return Some(Item::File(Color::Red));
+            return Item::File(Color::Red);
         }
     } else if pixel_compare(pixel, PINK_PIXEL) {
         if image_compare(&data[offset..], &PINK_DATA) {
-            return Some(Item::File(Color::Pink));
+            return Item::File(Color::Pink);
         }
     } else if pixel_compare(pixel, BLUE_PIXEL) {
         if image_compare(&data[offset..], &BLUE_DATA) {
-            return Some(Item::File(Color::Blue));
+            return Item::File(Color::Blue);
         }
     } else if pixel_compare(pixel, YELLOW_BOMB_PIXEL) {
-        return Some(Item::Bomb(Color::Yellow));
+        return Item::Bomb(Color::Yellow);
     } else if pixel_compare(pixel, CYAN_BOMB_PIXEL) {
-        return Some(Item::Bomb(Color::Cyan));
+        return Item::Bomb(Color::Cyan);
     } else if pixel_compare(pixel, RED_BOMB_PIXEL) {
-        return Some(Item::Bomb(Color::Red));
+        return Item::Bomb(Color::Red);
     } else if pixel_compare(pixel, PINK_BOMB_PIXEL) {
-        return Some(Item::Bomb(Color::Pink));
+        return Item::Bomb(Color::Pink);
     } else if pixel_compare(pixel, BLUE_BOMB_PIXEL) {
-        return Some(Item::Bomb(Color::Blue));
+        return Item::Bomb(Color::Blue);
     }
-    None
+    Item::Empty
 }
 
 fn find_y_offset(data: &[u8]) -> Option<usize> {
@@ -171,7 +174,7 @@ fn find_y_offset(data: &[u8]) -> Option<usize> {
             let x = i * ITEM_SIZE + PIXEL_X_OFFSET;
             let offset = coord_to_offset(x, y);
             let item = item_from_data(data, offset);
-            if item.is_some() {
+            if item != Item::Empty {
                 return Some(y % ITEM_SIZE);
             }
         }
@@ -197,8 +200,12 @@ fn find_held(data: &[u8], phage_col: usize) -> Option<Item> {
     let pink_x = phage_col * ITEM_SIZE + PHAGE_PINK_DATA_X_OFFSET;
     let pink_offset = coord_to_offset(pink_x, PHAGE_PINK_DATA_Y_OFFSET);
     let found_pink = image_compare(&data[pink_offset..], &PHAGE_PINK_DATA);
-    assert!(found_pink ^ held.is_some());
-    held
+
+    if found_pink == (held != Item::Empty) {
+        None
+    } else {
+        Some(held)
+    }
 }
 
 pub fn get_board_from_window(display: *mut Display, window: Window) -> Option<Board> {
@@ -220,15 +227,19 @@ pub fn get_board_from_window(display: *mut Display, window: Window) -> Option<Bo
         }
     };
 
-    let mut items = [[None; board::MAX_COLS]; board::MAX_ROWS];
-    for i in 0..board::MAX_COLS {
-        let x = i * ITEM_SIZE + PIXEL_X_OFFSET;
-        for j in 0..board::MAX_ROWS {
-            let y = j * ITEM_SIZE + y_offset;
+    let mut items = [[Item::Empty; board::MAX_COLS]; board::MAX_ROWS];
+    for col in 0..board::MAX_COLS {
+        let x = col * ITEM_SIZE + PIXEL_X_OFFSET;
+        for row in 0..board::MAX_ROWS {
+            let y = row * ITEM_SIZE + y_offset;
             let offset = coord_to_offset(x, y);
-            items[j][i] = item_from_data(image_data, offset);
-            if items[j][i].is_none() {
-                break;
+            items[row][col] = item_from_data(image_data, offset);
+            if items[row][col] != Item::Empty {
+                for k in (0..row).rev() {
+                    if items[k][col] == Item::Empty {
+                        items[k][col] = Item::Unknown;
+                    }
+                }
             }
         }
     }
@@ -241,7 +252,13 @@ pub fn get_board_from_window(display: *mut Display, window: Window) -> Option<Bo
         }
     };
 
-    let held = find_held(image_data, phage_col);
+    let held = match find_held(image_data, phage_col) {
+        Some(h) => h,
+        None => {
+            println!("Could not read held item");
+            return None;
+        }
+    };
 
     Some(board::make_board(phage_col, held, items))
 }
