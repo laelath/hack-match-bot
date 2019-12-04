@@ -8,27 +8,27 @@ use x11::{keysym, xlib, xtest};
 pub const KEY_DELAY_MILLIS: u64 = 17;
 pub const KEY_DELAY: time::Duration = time::Duration::from_millis(KEY_DELAY_MILLIS);
 
-const EXAPUNKS_WINDOW_NAME: &str = "EXAPUNKS";
 const PIXEL_FUZZ: isize = 3;
+// const ROW_FUZZ: usize = 4;
 
-const ITEM_SIZE: usize = 60;
+const ITEM_SIZE: usize = 72;
 const BOARD_PIXEL_WIDTH: usize = board::MAX_COLS * ITEM_SIZE;
-const BOARD_PIXEL_HEIGHT: usize = 643;
-const BOARD_X_OFFSET: usize = 367;
-const BOARD_Y_OFFSET: usize = 126;
-const BOARD_PIXEL_HEIGHT_ITEMS: usize = 526;
+const BOARD_PIXEL_HEIGHT: usize = 770;
+const BOARD_X_OFFSET: usize = 440;
+const BOARD_Y_OFFSET: usize = 151;
+const BOARD_PIXEL_HEIGHT_ITEMS: usize = 810 - BOARD_Y_OFFSET;
 
-const PIXEL_X_OFFSET: usize = 21;
+const PIXEL_X_OFFSET: usize = 30;
 
-const WINDOW_WIDTH: usize = 1600;
-const WINDOW_HEIGHT: usize = 900;
+const WINDOW_WIDTH: usize = 1920;
+const WINDOW_HEIGHT: usize = 1080;
 
 const XIMAGE_BYTE_ORDER: i32 = xlib::LSBFirst;
 const XIMAGE_BITMAP_UNIT: i32 = 32;
 const XIMAGE_BITMAP_BIT_ORDER: i32 = xlib::LSBFirst;
 const XIMAGE_BITMAP_PAD: i32 = 32;
 const XIMAGE_DEPTH: i32 = 24;
-const XIMAGE_BYTES_PER_LINE_FULL_WINDOW: i32 = 6400;
+const XIMAGE_BYTES_PER_LINE_FULL_WINDOW: i32 = 4 * WINDOW_WIDTH as i32;
 const XIMAGE_BITS_PER_PIXEL: i32 = 32;
 const XIMAGE_RED_MASK: u64 = 0xFF0000;
 const XIMAGE_GREEN_MASK: u64 = 0xFF00;
@@ -44,7 +44,7 @@ fn pixel_compare(Pixel(r1, g1, b1): Pixel, Pixel(r2, g2, b2): Pixel) -> bool {
     let g = isize::abs(g1 as isize - g2 as isize);
     let b = isize::abs(b1 as isize - b2 as isize);
 
-    r + g + b < PIXEL_FUZZ
+    r + g + b <= PIXEL_FUZZ
 }
 
 const YELLOW_PIXEL: Pixel = Pixel(235, 163, 24);
@@ -52,17 +52,19 @@ const CYAN_PIXEL: Pixel = Pixel(18, 186, 156);
 const RED_PIXEL: Pixel = Pixel(220, 22, 49);
 const PINK_PIXEL: Pixel = Pixel(251, 22, 184);
 const BLUE_PIXEL: Pixel = Pixel(32, 57, 130);
-const YELLOW_BOMB_PIXEL: Pixel = Pixel(29, 27, 8);
-const CYAN_BOMB_PIXEL: Pixel = Pixel(3, 39, 45);
-const RED_BOMB_PIXEL: Pixel = Pixel(66, 9, 15);
-const PINK_BOMB_PIXEL: Pixel = Pixel(59, 2, 50);
-const BLUE_BOMB_PIXEL: Pixel = Pixel(9, 5, 51);
+const YELLOW_BOMB_PIXEL: Pixel = Pixel(29, 27, 7);
+const CYAN_BOMB_PIXEL: Pixel = Pixel(3, 40, 45);
+const RED_BOMB_PIXEL: Pixel = Pixel(66, 9, 15); //*
+const PINK_BOMB_PIXEL: Pixel = Pixel(59, 2, 50); //*
+const BLUE_BOMB_PIXEL: Pixel = Pixel(9, 4, 51);
 
-const PHAGE_HELD_Y_OFFSET: usize = 630;
-const PHAGE_PINK_DATA_X_OFFSET: usize = 392 - BOARD_X_OFFSET;
-const PHAGE_PINK_DATA_Y_OFFSET: usize = 741 - BOARD_Y_OFFSET;
-const PHAGE_SILVER_DATA_X_OFFSET: usize = 385 - BOARD_X_OFFSET;
-const PHAGE_SILVER_DATA_Y_OFFSET: usize = 694 - BOARD_Y_OFFSET;
+const PHAGE_HELD_Y_OFFSET: usize = 908 - BOARD_Y_OFFSET;
+const PHAGE_PINK_DATA_X_OFFSET: usize = 31;
+const PHAGE_PINK_DATA_Y_OFFSET: usize = 886 - BOARD_Y_OFFSET;
+const PHAGE_SILVER_DATA_X_OFFSET: usize = 22;
+const PHAGE_SILVER_DATA_Y_OFFSET: usize = 833 - BOARD_Y_OFFSET;
+const PHAGE_CROUCH_X_OFFSET: usize = 3;
+const PHAGE_CROUCH_Y_OFFSET: usize = 9;
 
 const YELLOW_DATA: [u8; 40] = [
     24, 163, 235, 0, 24, 163, 235, 0, 24, 163, 235, 0, 24, 163, 235, 0, 24, 163, 235, 0, 24, 163,
@@ -85,13 +87,13 @@ const BLUE_DATA: [u8; 40] = [
     130, 57, 32, 0, 130, 57, 32, 0, 130, 57, 32, 0, 130, 57, 32, 0,
 ];
 
-const PHAGE_SILVER_DATA: [u8; 24] = [
+const PHAGE_SILVER_DATA: [u8; 32] = [
     255, 255, 228, 0, 255, 255, 228, 0, 255, 255, 229, 0, 255, 255, 229, 0, 255, 255, 229, 0, 255,
-    255, 228, 0,
+    255, 229, 0, 255, 255, 228, 0, 255, 255, 228, 0,
 ];
-const PHAGE_PINK_DATA: [u8; 32] = [
-    122, 14, 178, 0, 148, 8, 221, 0, 149, 4, 222, 0, 150, 0, 224, 0, 150, 0, 224, 0, 150, 0, 224,
-    0, 150, 0, 224, 0, 149, 4, 222, 0,
+const PHAGE_PINK_DATA: [u8; 44] = [
+    148, 8, 221, 0, 148, 8, 221, 0, 149, 4, 222, 0, 150, 0, 224, 0, 150, 0, 224, 0, 150, 0, 224, 0,
+    150, 0, 224, 0, 150, 0, 224, 0, 149, 4, 222, 0, 148, 8, 221, 0, 148, 8, 221, 0,
 ];
 
 // TODO: check for pieces that are currently in a match
@@ -131,7 +133,8 @@ fn image_compare(d1: &[u8], d2: &[u8]) -> bool {
     true
 }
 
-fn item_from_data(data: &[u8], offset: usize) -> Item {
+fn item_from_data(data: &[u8], x: usize, y: usize) -> Item {
+    let offset = coord_to_offset(x, y);
     let pixel = Pixel(data[offset + 2], data[offset + 1], data[offset]);
 
     if pixel_compare(pixel, YELLOW_PIXEL) {
@@ -168,12 +171,23 @@ fn item_from_data(data: &[u8], offset: usize) -> Item {
     Item::Empty
 }
 
+/*
+fn item_from_data_fuzz(data: &[u8], x: usize, y: usize) -> Item {
+    for dy in 0..ROW_FUZZ + 1 {
+        let item = item_from_data(data, x, y + dy);
+        if item != Item::Empty {
+            return item;
+        }
+    }
+    Item::Empty
+}
+*/
+
 fn find_y_offset(data: &[u8]) -> Option<usize> {
     for y in (0..BOARD_PIXEL_HEIGHT_ITEMS).rev() {
         for i in 0..board::MAX_COLS {
             let x = i * ITEM_SIZE + PIXEL_X_OFFSET;
-            let offset = coord_to_offset(x, y);
-            let item = item_from_data(data, offset);
+            let item = item_from_data(data, x, y);
             if item != Item::Empty {
                 return Some(y % ITEM_SIZE);
             }
@@ -189,17 +203,51 @@ fn find_phage_col(data: &[u8]) -> Option<usize> {
         if image_compare(&data[offset..], &PHAGE_SILVER_DATA) {
             return Some(col);
         }
+
+        let offset = coord_to_offset(x - PHAGE_CROUCH_X_OFFSET, PHAGE_SILVER_DATA_Y_OFFSET);
+        if image_compare(&data[offset..], &PHAGE_SILVER_DATA) {
+            return Some(col);
+        }
+
+        let offset = coord_to_offset(x + PHAGE_CROUCH_X_OFFSET, PHAGE_SILVER_DATA_Y_OFFSET);
+        if image_compare(&data[offset..], &PHAGE_SILVER_DATA) {
+            return Some(col);
+        }
     }
     None
 }
 
-fn find_held(data: &[u8], phage_col: usize) -> Option<Item> {
-    let held_x = phage_col * ITEM_SIZE + PIXEL_X_OFFSET;
-    let held_offset = coord_to_offset(held_x, PHAGE_HELD_Y_OFFSET);
-    let held = item_from_data(data, held_offset);
+fn find_pink(data: &[u8], phage_col: usize) -> bool {
     let pink_x = phage_col * ITEM_SIZE + PHAGE_PINK_DATA_X_OFFSET;
     let pink_offset = coord_to_offset(pink_x, PHAGE_PINK_DATA_Y_OFFSET);
-    let found_pink = image_compare(&data[pink_offset..], &PHAGE_PINK_DATA);
+    if image_compare(&data[pink_offset..], &PHAGE_PINK_DATA) {
+        return true;
+    }
+
+    let pink_offset = coord_to_offset(
+        pink_x - PHAGE_CROUCH_X_OFFSET,
+        PHAGE_PINK_DATA_Y_OFFSET + PHAGE_CROUCH_Y_OFFSET,
+    );
+    if image_compare(&data[pink_offset..], &PHAGE_PINK_DATA) {
+        return true;
+    }
+
+    let pink_offset = coord_to_offset(
+        pink_x + PHAGE_CROUCH_X_OFFSET,
+        PHAGE_PINK_DATA_Y_OFFSET + PHAGE_CROUCH_Y_OFFSET,
+    );
+    if image_compare(&data[pink_offset..], &PHAGE_PINK_DATA) {
+        return true;
+    }
+
+    false
+}
+
+fn find_held(data: &[u8], phage_col: usize) -> Option<Item> {
+    let held_x = phage_col * ITEM_SIZE + PIXEL_X_OFFSET;
+    let held = item_from_data(data, held_x, PHAGE_HELD_Y_OFFSET);
+
+    let found_pink = find_pink(data, phage_col);
 
     if found_pink == (held != Item::Empty) {
         None
@@ -219,6 +267,24 @@ pub fn get_board_from_window(display: *mut Display, window: Window) -> Option<Bo
     };
     defer! {{ unsafe { xlib::XDestroyImage(img_ptr); } }}
 
+    /*
+    let mut image_save = [0; BOARD_PIXEL_HEIGHT * BOARD_PIXEL_WIDTH * BYTES_PER_PIXEL];
+    image_save.copy_from_slice(image_data);
+
+    for i in 0..(BOARD_PIXEL_WIDTH * BOARD_PIXEL_HEIGHT) {
+        image_save[i * BYTES_PER_PIXEL + 3]  = 0xFF;
+    }
+
+
+    image::save_buffer(
+        format!("capture_{}.png", gen),
+        &image_save,
+        BOARD_PIXEL_WIDTH as u32,
+        BOARD_PIXEL_HEIGHT as u32,
+        image::RGBA(8),
+    ).unwrap();
+    */
+
     let y_offset = match find_y_offset(image_data) {
         Some(y) => y,
         None => {
@@ -232,15 +298,7 @@ pub fn get_board_from_window(display: *mut Display, window: Window) -> Option<Bo
         let x = col * ITEM_SIZE + PIXEL_X_OFFSET;
         for row in 0..board::MAX_ROWS {
             let y = row * ITEM_SIZE + y_offset;
-            let offset = coord_to_offset(x, y);
-            items[row][col] = item_from_data(image_data, offset);
-            if items[row][col] != Item::Empty {
-                for k in (0..row).rev() {
-                    if items[k][col] == Item::Empty {
-                        items[k][col] = Item::Unknown;
-                    }
-                }
-            }
+            items[row][col] = item_from_data(image_data, x, y);
         }
     }
 
@@ -274,7 +332,7 @@ pub fn get_exapunks_window(display: *mut Display) -> Window {
 
             match unsafe { std::ffi::CStr::from_ptr(name_ptr) }.to_str() {
                 Ok(name) => {
-                    if name == EXAPUNKS_WINDOW_NAME {
+                    if name == "EXAPUNKS" {
                         return Some(window);
                     }
                 }

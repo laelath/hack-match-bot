@@ -20,7 +20,6 @@ pub enum Color {
 pub enum Item {
     File(Color),
     Bomb(Color),
-    Unknown,
     Empty,
 }
 
@@ -41,7 +40,6 @@ impl fmt::Display for Item {
         match self {
             File(c) => write!(f, "{}", c),
             Bomb(c) => write!(f, "{}", c.to_string().to_uppercase()),
-            Unknown => write!(f, "X"),
             Empty => write!(f, " "),
         }
     }
@@ -54,7 +52,7 @@ pub struct Board {
     blocks: [[Item; MAX_COLS]; MAX_ROWS],
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum Move {
     Left,
     Right,
@@ -103,33 +101,30 @@ impl Board {
         if self.held == Empty {
             // Find a block to grab
             for row in (0..MAX_ROWS).rev() {
-                if self.blocks[row][self.phage_col] == Unknown {
-                    break;
-                } else if self.blocks[row][self.phage_col] != Empty {
+                if self.blocks[row][self.phage_col] != Empty {
                     mem::swap(&mut self.held, &mut self.blocks[row][self.phage_col]);
                     break;
                 }
             }
-        } else {
+        } else if self.blocks[MAX_ROWS - 1][self.phage_col] == Empty {
             // Try and place held block
-            for row in 0..MAX_ROWS {
-                if self.blocks[row][self.phage_col] == Empty {
-                    mem::swap(&mut self.held, &mut self.blocks[row][self.phage_col]);
-                    break;
+            for row in (0..MAX_ROWS - 1).rev() {
+                if self.blocks[row][self.phage_col] != Empty {
+                    mem::swap(&mut self.held, &mut self.blocks[row + 1][self.phage_col]);
+                    return;
                 }
             }
+            mem::swap(&mut self.held, &mut self.blocks[0][self.phage_col]);
         }
     }
 
     fn swap_blocks(&mut self) {
         for row in (1..MAX_ROWS).rev() {
-            if self.blocks[row][self.phage_col] == Unknown
-                || self.blocks[row - 1][self.phage_col] == Unknown
-            {
-                break;
-            } else if self.blocks[row][self.phage_col] != Empty {
-                let (a, b) = self.blocks.split_at_mut(row);
-                mem::swap(&mut a[row - 1][self.phage_col], &mut b[0][self.phage_col]);
+            if self.blocks[row][self.phage_col] != Empty {
+                if self.blocks[row - 1][self.phage_col] != Empty {
+                    let (a, b) = self.blocks.split_at_mut(row);
+                    mem::swap(&mut a[row - 1][self.phage_col], &mut b[0][self.phage_col]);
+                }
                 break;
             }
         }
@@ -176,12 +171,11 @@ impl Board {
         for row in 0..MAX_ROWS {
             for col in 0..MAX_COLS {
                 let b = self.blocks[row][col];
-                if b != Empty && b != Unknown {
+                if b != Empty {
                     let group_size = self.group_size(row, col, b, &mut visited);
                     let match_size = match b {
                         File(_) => 4,
                         Bomb(_) => 2,
-                        Unknown => panic!("Cannot find group size of unknown item"),
                         Empty => panic!("Cannot find group size of empty item"),
                     };
 
@@ -195,6 +189,7 @@ impl Board {
         false
     }
 
+    /*
     fn tallest_col(&self) -> (usize, usize) {
         let mut max = 0;
         let mut max_col = 0;
@@ -211,6 +206,7 @@ impl Board {
         }
         (max, max_col)
     }
+    */
 
     /*
     fn shortest_col(&self) -> (usize, usize) {
@@ -234,11 +230,10 @@ impl Board {
     fn column_heights(&self) -> [usize; MAX_COLS] {
         let mut heights = [0; MAX_COLS];
         for col in 0..MAX_COLS {
-            for row in (0..MAX_ROWS).rev() {
+            for row in 0..MAX_ROWS {
                 let b = self.blocks[row][col];
                 if b != Empty {
-                    heights[col] = row;
-                    break;
+                    heights[col] += 1;
                 }
             }
         }
@@ -263,7 +258,7 @@ impl Board {
             for col in 0..MAX_COLS {
                 if !visited[row][col] {
                     let b = self.blocks[row][col];
-                    if b != Empty && b != Unknown {
+                    if b != Empty {
                         let group_size = self.group_size(row, col, b, &mut visited);
                         score += (group_size.pow(2)) as f64;
                     }
@@ -276,13 +271,13 @@ impl Board {
             score += 1.0;
         }
 
-        let (max, _) = self.tallest_col();
+        // let (max, _) = self.tallest_col();
         // let (min, _) = self.shortest_col();
         // assert!(min <= max);
         // score -= ((max - min).pow(2)) as f64;
 
         score -= self.imbalance().powi(2);
-        score -= max as f64;
+        // score -= max as f64;
 
         score
     }

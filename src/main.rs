@@ -13,8 +13,8 @@ use std::time::{Duration, Instant};
 use x11::xlib;
 use x11::xlib::{Display, Window};
 
-const MAX_SEARCH_TIME: Duration = Duration::from_millis(200);
-const BOARD_SOLVE_WAIT: Duration = Duration::from_millis(2 * screen::KEY_DELAY_MILLIS + 3);
+const MAX_SEARCH_TIME: Duration = Duration::from_millis(170);
+const BOARD_SOLVE_WAIT: Duration = Duration::from_millis(5 * screen::KEY_DELAY_MILLIS + 3);
 const SCREEN_READ_FAIL_LIMIT: usize = 25;
 
 fn find_match(_display: *mut Display, _window: Window, start: &Board) -> Vec<Move> {
@@ -25,8 +25,8 @@ fn find_match(_display: *mut Display, _window: Window, start: &Board) -> Vec<Mov
 
     let start_time = Instant::now();
 
-    let mut boards = VecDeque::new();
-    let mut seen = HashSet::new();
+    let mut boards = VecDeque::with_capacity(1000);
+    let mut seen = HashSet::with_capacity(75000);
 
     let mut highest_score = start.score();
     let mut highest_path = vec![];
@@ -65,7 +65,7 @@ fn find_match(_display: *mut Display, _window: Window, start: &Board) -> Vec<Mov
 
         let (board, path) = boards.pop_front().unwrap();
         if path.len() > steps_ahead {
-            steps_ahead = path.len();
+            steps_ahead = path.len() + 1;
         }
 
         for m in [Move::Left, Move::Right, Move::Swap, Move::Exchange].iter() {
@@ -186,16 +186,16 @@ fn main() {
     let mut generation = 0;
 
     loop {
-        thread::sleep(BOARD_SOLVE_WAIT);
         get_new_board(display, window, &mut board);
 
         println!("Generation: {}", generation);
         board.print();
         println!("Solving board");
         let path = find_match(display, window, &board);
-        println!("Playing path");
+        println!("Playing path {:?}", path);
         screen::play_path(display, path);
         generation += 1;
         println!();
+        thread::sleep(BOARD_SOLVE_WAIT);
     }
 }
