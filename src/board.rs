@@ -18,9 +18,19 @@ pub enum Color {
 
 #[derive(PartialEq, Eq, Copy, Clone, Hash)]
 pub enum Item {
-    File(Color),
-    Bomb(Color),
+    File(Color, bool),
+    Bomb(Color, bool),
     Empty,
+}
+
+impl Item {
+    fn is_matched(&self) -> bool {
+        match self {
+            File(_, b) => *b,
+            Bomb(_, b) => *b,
+            Empty => false,
+        }
+    }
 }
 
 impl fmt::Display for Color {
@@ -38,8 +48,14 @@ impl fmt::Display for Color {
 impl fmt::Display for Item {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            File(c) => write!(f, "{}", c),
-            Bomb(c) => write!(f, "{}", c.to_string().to_uppercase()),
+            File(c, b) => {
+                if *b {
+                    write!(f, "M")
+                } else {
+                    write!(f, "{}", c)
+                }
+            }
+            Bomb(c, _) => write!(f, "{}", c.to_string().to_uppercase()),
             Empty => write!(f, " "),
         }
     }
@@ -102,7 +118,9 @@ impl Board {
             // Find a block to grab
             for row in (0..MAX_ROWS).rev() {
                 if self.blocks[row][self.phage_col] != Empty {
-                    mem::swap(&mut self.held, &mut self.blocks[row][self.phage_col]);
+                    if !self.blocks[row][self.phage_col].is_matched() {
+                        mem::swap(&mut self.held, &mut self.blocks[row][self.phage_col]);
+                    }
                     break;
                 }
             }
@@ -114,6 +132,7 @@ impl Board {
                     return;
                 }
             }
+            // If column empty, place on the bottom row
             mem::swap(&mut self.held, &mut self.blocks[0][self.phage_col]);
         }
     }
@@ -121,7 +140,10 @@ impl Board {
     fn swap_blocks(&mut self) {
         for row in (1..MAX_ROWS).rev() {
             if self.blocks[row][self.phage_col] != Empty {
-                if self.blocks[row - 1][self.phage_col] != Empty {
+                if !self.blocks[row][self.phage_col].is_matched()
+                    && self.blocks[row - 1][self.phage_col] != Empty
+                    && !self.blocks[row - 1][self.phage_col].is_matched()
+                {
                     let (a, b) = self.blocks.split_at_mut(row);
                     mem::swap(&mut a[row - 1][self.phage_col], &mut b[0][self.phage_col]);
                 }
@@ -130,6 +152,35 @@ impl Board {
         }
     }
 
+    fn has_matched(&self) -> bool {
+        for row in 0..MAX_ROWS {
+            for col in 0..MAX_COLS {
+                if self.blocks[row][col].is_matched() {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    fn settle_blocks(&mut self) {
+        if self.has_matched() {
+            return;
+        }
+
+        for col in 0..MAX_COLS {
+            for row in 1..MAX_ROWS {
+                for srow in (1..row + 1).rev() {
+                    if self.blocks[srow - 1][col] == Empty && self.blocks[srow][col] != Empty {
+                        let (a, b) = self.blocks.split_at_mut(srow);
+                        mem::swap(&mut a[srow - 1][col], &mut b[0][col]);
+                    }
+                }
+            }
+        }
+    }
+
+    // group size ignores the matched flag, this allows for adding to matches
     fn group_size(
         &self,
         row: usize,
@@ -141,7 +192,11 @@ impl Board {
             return 0;
         }
 
-        if self.blocks[row][col] != b {
+        if !match self.blocks[row][col] {
+            File(c, _) => b == File(c, false),
+            Bomb(c, _) => b == Bomb(c, false),
+            Empty => b == Empty,
+        } {
             return 0;
         }
 
@@ -171,11 +226,11 @@ impl Board {
         for row in 0..MAX_ROWS {
             for col in 0..MAX_COLS {
                 let b = self.blocks[row][col];
-                if b != Empty {
+                if b != Empty && !b.is_matched() {
                     let group_size = self.group_size(row, col, b, &mut visited);
                     let match_size = match b {
-                        File(_) => 4,
-                        Bomb(_) => 2,
+                        File(_, _) => 4,
+                        Bomb(_, _) => 2,
                         Empty => panic!("Cannot find group size of empty item"),
                     };
 
@@ -306,9 +361,13 @@ impl Board {
 }
 
 pub fn make_board(phage_col: usize, held: Item, items: [[Item; MAX_COLS]; MAX_ROWS]) -> Board {
-    Board {
+    let mut board = Board {
         phage_col: phage_col,
         held: held,
         blocks: items,
-    }
+    };
+
+    board.settle_blocks();
+
+    board
 }
