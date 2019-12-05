@@ -123,7 +123,7 @@ fn find_match(start: &Board) -> Vec<Move> {
 
 // checks that the board is seen twice in a row and is different from the given board
 fn get_new_board(display: *mut Display, window: Window, prev_board: &mut Board) {
-    let mut failed = 0;
+    // let mut failed = 0;
     loop {
         match screen::get_board_from_window(display, window) {
             Some(board) => {
@@ -133,11 +133,11 @@ fn get_new_board(display: *mut Display, window: Window, prev_board: &mut Board) 
                 }
             }
             None => {
-                if failed >= SCREEN_READ_FAIL_LIMIT {
-                    println!("Failed to read screen too many times, exiting");
-                    std::process::exit(0);
-                }
-                failed += 1;
+                // if failed >= SCREEN_READ_FAIL_LIMIT {
+                //     println!("Failed to read screen too many times, exiting");
+                //     std::process::exit(0);
+                // }
+                // failed += 1;
                 thread::sleep(RECHECK_WAIT_TIME);
             }
         }

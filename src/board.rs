@@ -18,17 +18,41 @@ pub enum Color {
 
 #[derive(PartialEq, Eq, Copy, Clone, Hash)]
 pub enum Item {
-    File(Color, bool),
-    Bomb(Color, bool),
+    File(Color),
+    Bomb(Color),
+    MatchedFile(Color),
+    MatchedBomb(Color),
     Empty,
 }
 
 impl Item {
-    fn is_matched(&self) -> bool {
+    pub fn is_matched(&self) -> bool {
         match self {
-            File(_, b) => *b,
-            Bomb(_, b) => *b,
+            File(_) => false,
+            Bomb(_) => false,
+            MatchedFile(_) => true,
+            MatchedBomb(_) => true,
             Empty => false,
+        }
+    }
+
+    pub fn to_matched(&self) -> Item {
+        match self {
+            File(c) => MatchedFile(*c),
+            Bomb(c) => MatchedBomb(*c),
+            MatchedFile(c) => MatchedFile(*c),
+            MatchedBomb(c) => MatchedBomb(*c),
+            Empty => Empty,
+        }
+    }
+
+    pub fn to_normal(&self) -> Item {
+        match self {
+            File(c) => File(*c),
+            Bomb(c) => Bomb(*c),
+            MatchedFile(c) => File(*c),
+            MatchedBomb(c) => Bomb(*c),
+            Empty => Empty,
         }
     }
 }
@@ -48,14 +72,10 @@ impl fmt::Display for Color {
 impl fmt::Display for Item {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            File(c, b) => {
-                if *b {
-                    write!(f, "M")
-                } else {
-                    write!(f, "{}", c)
-                }
-            }
-            Bomb(c, _) => write!(f, "{}", c.to_string().to_uppercase()),
+            File(c) => write!(f, "{}", c),
+            Bomb(c) => write!(f, "{}", c.to_string().to_uppercase()),
+            MatchedFile(_) => write!(f, "M"),
+            MatchedBomb(_) => write!(f, "B"),
             Empty => write!(f, " "),
         }
     }
@@ -192,11 +212,7 @@ impl Board {
             return 0;
         }
 
-        if !match self.blocks[row][col] {
-            File(c, _) => b == File(c, false),
-            Bomb(c, _) => b == Bomb(c, false),
-            Empty => b == Empty,
-        } {
+        if b != self.blocks[row][col].to_normal() {
             return 0;
         }
 
@@ -229,9 +245,11 @@ impl Board {
                 if b != Empty && !b.is_matched() {
                     let group_size = self.group_size(row, col, b, &mut visited);
                     let match_size = match b {
-                        File(_, _) => 4,
-                        Bomb(_, _) => 2,
-                        Empty => panic!("Cannot find group size of empty item"),
+                        File(_) => 4,
+                        Bomb(_) => 2,
+                        MatchedFile(_) => panic!("Should not start match search from matched item"),
+                        MatchedBomb(_) => panic!("Should not start match search from matched item"),
+                        Empty => panic!("Empty items cannot be matched"),
                     };
 
                     if group_size >= match_size {

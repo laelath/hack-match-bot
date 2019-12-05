@@ -181,28 +181,35 @@ fn item_from_data(data: &[u8], x: usize, y: usize) -> Item {
 
     let matched = &data[match_offset..match_offset + 8] == &MATCH_OUTLINE_DATA;
 
-    if &data[offset..offset + 32] == &YELLOW_DATA {
-        return Item::File(Color::Yellow, matched);
+    let item = if &data[offset..offset + 32] == &YELLOW_DATA {
+        Item::File(Color::Yellow)
     } else if &data[offset..offset + 32] == &CYAN_DATA {
-        return Item::File(Color::Cyan, matched);
+        Item::File(Color::Cyan)
     } else if &data[offset..offset + 32] == &RED_DATA {
-        return Item::File(Color::Red, matched);
+        Item::File(Color::Red)
     } else if &data[offset..offset + 32] == &PINK_DATA {
-        return Item::File(Color::Pink, matched);
+        Item::File(Color::Pink)
     } else if &data[offset..offset + 32] == &BLUE_DATA {
-        return Item::File(Color::Blue, matched);
+        Item::File(Color::Blue)
     } else if &data[offset..offset + 4] == &YELLOW_BOMB_PIXEL {
-        return Item::Bomb(Color::Yellow, matched);
+        Item::Bomb(Color::Yellow)
     } else if &data[offset..offset + 4] == &CYAN_BOMB_PIXEL {
-        return Item::Bomb(Color::Cyan, matched);
+        Item::Bomb(Color::Cyan)
     } else if &data[offset..offset + 4] == &RED_BOMB_PIXEL {
-        return Item::Bomb(Color::Red, matched);
+        Item::Bomb(Color::Red)
     } else if &data[offset..offset + 4] == &PINK_BOMB_PIXEL {
-        return Item::Bomb(Color::Pink, matched);
+        Item::Bomb(Color::Pink)
     } else if &data[offset..offset + 4] == &BLUE_BOMB_PIXEL {
-        return Item::Bomb(Color::Blue, matched);
+        Item::Bomb(Color::Blue)
+    } else {
+        Item::Empty
+    };
+
+    if matched {
+        item.to_matched()
+    } else {
+        item
     }
-    Item::Empty
 }
 
 /*
