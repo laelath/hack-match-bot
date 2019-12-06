@@ -6,7 +6,8 @@ use x11::xlib::{Display, Window, XImage};
 use x11::{keysym, xlib, xtest};
 
 pub const KEY_DELAY_MILLIS: u64 = 17;
-pub const KEY_DELAY: time::Duration = time::Duration::from_millis(KEY_DELAY_MILLIS);
+const KEY_DELAY: time::Duration = time::Duration::from_millis(KEY_DELAY_MILLIS);
+const RECHECK_WAIT_TIME: time::Duration = time::Duration::from_millis(KEY_DELAY_MILLIS + 3);
 
 const ITEM_SIZE: usize = 72;
 const BOARD_PIXEL_WIDTH: usize = board::MAX_COLS * ITEM_SIZE;
@@ -34,32 +35,6 @@ const XIMAGE_BLUE_MASK: u64 = 0xFF;
 
 const BYTES_PER_PIXEL: usize = XIMAGE_BITS_PER_PIXEL as usize / 8;
 
-/*
-#[derive(Clone, Copy)]
-struct Pixel(u8, u8, u8);
-
-fn pixel_compare(Pixel(r1, g1, b1): Pixel, Pixel(r2, g2, b2): Pixel) -> bool {
-    let r = isize::abs(r1 as isize - r2 as isize);
-    let g = isize::abs(g1 as isize - g2 as isize);
-    let b = isize::abs(b1 as isize - b2 as isize);
-
-    r + g + b <= PIXEL_FUZZ
-}
-*/
-
-/*
-const YELLOW_PIXEL: Pixel = Pixel(235, 163, 24);
-const CYAN_PIXEL: Pixel = Pixel(18, 186, 156);
-const RED_PIXEL: Pixel = Pixel(220, 22, 49);
-const PINK_PIXEL: Pixel = Pixel(251, 22, 184);
-const BLUE_PIXEL: Pixel = Pixel(32, 57, 130);
-const YELLOW_BOMB_PIXEL: Pixel = Pixel(29, 27, 7);
-const CYAN_BOMB_PIXEL: Pixel = Pixel(3, 40, 45);
-const RED_BOMB_PIXEL: Pixel = Pixel(66, 9, 15);
-const PINK_BOMB_PIXEL: Pixel = Pixel(60, 0, 50);
-const BLUE_BOMB_PIXEL: Pixel = Pixel(9, 4, 51);
-*/
-
 const YELLOW_BOMB_PIXEL: [u8; 4] = [7, 27, 29, 0];
 const CYAN_BOMB_PIXEL: [u8; 4] = [45, 40, 3, 0];
 const RED_BOMB_PIXEL: [u8; 4] = [15, 9, 66, 0];
@@ -74,37 +49,6 @@ const PHAGE_SILVER_DATA_Y_OFFSET: usize = 833 - BOARD_Y_OFFSET;
 const PHAGE_CROUCH_X_OFFSET: usize = 3;
 const PHAGE_CROUCH_Y_OFFSET: usize = 9;
 
-/*
-const YELLOW_DATA: [u8; 40] = [
-    24, 163, 235, 0, 24, 163, 235, 0, 24, 163, 235, 0, 24, 163, 235, 0, 24, 163, 235, 0, 24, 163,
-    235, 0, 24, 163, 235, 0, 24, 163, 235, 0, 24, 163, 235, 0, 24, 163, 235, 0,
-];
-const CYAN_DATA: [u8; 40] = [
-    156, 186, 18, 0, 156, 186, 18, 0, 156, 186, 18, 0, 156, 186, 18, 0, 156, 186, 18, 0, 156, 186,
-    18, 0, 156, 186, 18, 0, 156, 186, 18, 0, 156, 186, 18, 0, 156, 186, 18, 0,
-];
-const RED_DATA: [u8; 40] = [
-    49, 22, 220, 0, 49, 22, 220, 0, 49, 22, 220, 0, 49, 22, 220, 0, 49, 22, 220, 0, 49, 22, 220, 0,
-    49, 22, 220, 0, 49, 22, 220, 0, 49, 22, 220, 0, 49, 22, 220, 0,
-];
-const PINK_DATA: [u8; 40] = [
-    184, 22, 251, 0, 184, 22, 251, 0, 184, 22, 251, 0, 184, 22, 251, 0, 184, 22, 251, 0, 184, 22,
-    251, 0, 184, 22, 251, 0, 184, 22, 251, 0, 184, 22, 251, 0, 184, 22, 251, 0,
-];
-const BLUE_DATA: [u8; 40] = [
-    130, 57, 32, 0, 130, 57, 32, 0, 130, 57, 32, 0, 130, 57, 32, 0, 130, 57, 32, 0, 130, 57, 32, 0,
-    130, 57, 32, 0, 130, 57, 32, 0, 130, 57, 32, 0, 130, 57, 32, 0,
-];
-
-const PHAGE_SILVER_DATA: [u8; 32] = [
-    255, 255, 228, 0, 255, 255, 228, 0, 255, 255, 229, 0, 255, 255, 229, 0, 255, 255, 229, 0, 255,
-    255, 229, 0, 255, 255, 228, 0, 255, 255, 228, 0,
-];
-const PHAGE_PINK_DATA: [u8; 44] = [
-    148, 8, 221, 0, 148, 8, 221, 0, 149, 4, 222, 0, 150, 0, 224, 0, 150, 0, 224, 0, 150, 0, 224, 0,
-    150, 0, 224, 0, 150, 0, 224, 0, 149, 4, 222, 0, 148, 8, 221, 0, 148, 8, 221, 0,
-];
-*/
 const YELLOW_DATA: [u8; 32] = [
     24, 163, 235, 0, 24, 163, 235, 0, 24, 163, 235, 0, 24, 163, 235, 0, 24, 163, 235, 0, 24, 163,
     235, 0, 24, 163, 235, 0, 24, 163, 235, 0,
@@ -137,8 +81,6 @@ const PHAGE_PINK_DATA: [u8; 32] = [
 
 const MATCH_OUTLINE_DATA: [u8; 8] = [255, 255, 255, 0, 255, 255, 255, 0];
 
-// TODO: check for pieces that are currently in a match
-
 fn screenshot_game(display: *mut Display, window: Window) -> *mut XImage {
     let img_ptr = unsafe {
         xlib::XGetImage(
@@ -159,21 +101,6 @@ fn screenshot_game(display: *mut Display, window: Window) -> *mut XImage {
 fn coord_to_offset(x: usize, y: usize) -> usize {
     BYTES_PER_PIXEL * (BOARD_PIXEL_WIDTH * y + x)
 }
-
-/*
-fn image_compare(d1: &[u8], d2: &[u8]) -> bool {
-    let len = usize::min(d1.len(), d2.len()) / BYTES_PER_PIXEL;
-    for i in 0..len {
-        let x = BYTES_PER_PIXEL * i;
-        let p1 = Pixel(d1[x + 2], d1[x + 1], d1[x]);
-        let p2 = Pixel(d2[x + 2], d2[x + 1], d2[x]);
-        if !pixel_compare(p1, p2) {
-            return false;
-        }
-    }
-    true
-}
-*/
 
 fn item_from_data(data: &[u8], x: usize, y: usize) -> Item {
     let offset = coord_to_offset(x, y);
@@ -211,18 +138,6 @@ fn item_from_data(data: &[u8], x: usize, y: usize) -> Item {
         item
     }
 }
-
-/*
-fn item_from_data_fuzz(data: &[u8], x: usize, y: usize) -> Item {
-    for dy in 0..ROW_FUZZ + 1 {
-        let item = item_from_data(data, x, y + dy);
-        if item != Item::Empty {
-            return item;
-        }
-    }
-    Item::Empty
-}
-*/
 
 fn find_y_offset(data: &[u8]) -> Option<usize> {
     for y in (0..BOARD_PIXEL_HEIGHT_ITEMS).rev() {
@@ -307,24 +222,6 @@ pub fn get_board_from_window(display: *mut Display, window: Window) -> Option<Bo
         )
     };
     defer! {{ unsafe { xlib::XDestroyImage(img_ptr); } }}
-
-    /*
-    let mut image_save = [0; BOARD_PIXEL_HEIGHT * BOARD_PIXEL_WIDTH * BYTES_PER_PIXEL];
-    image_save.copy_from_slice(image_data);
-
-    for i in 0..(BOARD_PIXEL_WIDTH * BOARD_PIXEL_HEIGHT) {
-        image_save[i * BYTES_PER_PIXEL + 3]  = 0xFF;
-    }
-
-
-    image::save_buffer(
-        format!("capture_{}.png", gen),
-        &image_save,
-        BOARD_PIXEL_WIDTH as u32,
-        BOARD_PIXEL_HEIGHT as u32,
-        image::RGBA(8),
-    ).unwrap();
-    */
 
     let y_offset = match find_y_offset(image_data) {
         Some(y) => y,
@@ -549,3 +446,20 @@ pub fn play_path(display: *mut Display, path: Vec<Move>) {
         }
     }
 }
+
+// checks that the board is seen twice in a row and is different from the given board
+pub fn get_new_board(display: *mut Display, window: Window, prev_board: &mut Board) {
+    // let mut failed = 0;
+    loop {
+        match get_board_from_window(display, window) {
+            Some(board) => {
+                if board != *prev_board {
+                    *prev_board = board;
+                    break;
+                }
+            }
+            None => thread::sleep(RECHECK_WAIT_TIME),
+        }
+    }
+}
+

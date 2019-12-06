@@ -11,12 +11,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use x11::xlib;
-use x11::xlib::{Display, Window};
 
 const MAX_SEARCH_TIME: Duration = Duration::from_millis(110);
 const SOLVE_WAIT_TIME: Duration = Duration::from_millis(4 * screen::KEY_DELAY_MILLIS + 12);
-const RECHECK_WAIT_TIME: Duration = Duration::from_millis(screen::KEY_DELAY_MILLIS + 3);
-const SCREEN_READ_FAIL_LIMIT: usize = 25;
 
 fn find_match(start: &Board) -> Vec<Move> {
     if start.has_match() {
@@ -39,16 +36,6 @@ fn find_match(start: &Board) -> Vec<Move> {
     boards.push_back((start.clone(), vec![]));
 
     while !boards.is_empty() {
-        /*if Instant::now().duration_since(check_time) >= BOARD_SOLVE_WAIT {
-            match screen::get_board_from_window(display, window) {
-                Some(screen_board) => if *start != screen_board {
-                    println!("Search timed out, playing highest score");
-                    return highest_path;
-                }
-                None => check_time = Instant::now(),
-            }
-        }*/
-
         if Instant::now().duration_since(start_time) > MAX_SEARCH_TIME {
             if highest_path.len() == 0 {
                 println!("Search timed out, could not find a match or better board");
@@ -121,51 +108,6 @@ fn find_match(start: &Board) -> Vec<Move> {
     highest_path
 }
 
-// checks that the board is seen twice in a row and is different from the given board
-fn get_new_board(display: *mut Display, window: Window, prev_board: &mut Board) {
-    // let mut failed = 0;
-    loop {
-        match screen::get_board_from_window(display, window) {
-            Some(board) => {
-                if board != *prev_board {
-                    *prev_board = board;
-                    break;
-                }
-            }
-            None => {
-                // if failed >= SCREEN_READ_FAIL_LIMIT {
-                //     println!("Failed to read screen too many times, exiting");
-                //     std::process::exit(0);
-                // }
-                // failed += 1;
-                thread::sleep(RECHECK_WAIT_TIME);
-            }
-        }
-    }
-
-    /*
-    loop {
-        thread::sleep(BOARD_SOLVE_WAIT);
-        match screen::get_board_from_window(display, window) {
-            Some(board) => {
-                if board == *prev_board {
-                    break;
-                }
-                *prev_board = board;
-            }
-            None => {
-                if failed >= SCREEN_READ_FAIL_LIMIT {
-                    println!("Failed to read screen too many times, exiting");
-                    std::process::exit(0);
-                }
-                failed += 1;
-            }
-        }
-        thread::sleep(BOARD_SOLVE_WAIT);
-    }
-    */
-}
-
 fn main() {
     let display = unsafe { xlib::XOpenDisplay(std::ptr::null()) };
     assert!(!display.is_null(), "Failed to get display");
@@ -187,7 +129,7 @@ fn main() {
     let mut generation = 0;
 
     loop {
-        get_new_board(display, window, &mut board);
+        screen::get_new_board(display, window, &mut board);
 
         println!("Generation: {}", generation);
         board.print();

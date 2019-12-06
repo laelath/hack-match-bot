@@ -9,4 +9,3 @@ edition = "2018"
 [dependencies]
 x11 = { version = "2.18", features = ["xlib", "xtest"] }
 scopeguard = "1.0"
-image = "0.22"
