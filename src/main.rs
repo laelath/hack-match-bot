@@ -110,6 +110,10 @@ fn main() {
     let setup = conn.setup();
     let screen = &setup.roots[screen_num];
 
+    let keycodes = screen::get_keycodes(&conn, &setup);
+
+    println!("{:?}", keycodes);
+
     println!("Finding EXAPUNKS window");
     let window = match screen::get_exapunks_window(&conn, screen.root) {
         Some(window) => window,
@@ -118,8 +122,6 @@ fn main() {
 
     println!("Validating window parameters");
     screen::validate_window(&conn, &setup, &screen, window);
-
-    let keycodes = screen::find_keycodes(&conn, &setup);
 
     screen::activate_window(&conn, window);
 

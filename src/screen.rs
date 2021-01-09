@@ -262,8 +262,6 @@ pub fn get_exapunks_window<Conn: ?Sized + RequestConnection>(
 
     let wm_name = String::from_utf8_lossy(&reply.value);
 
-    println!("{}", wm_name);
-
     if wm_name == "EXAPUNKS" {
         return Some(window);
     }
@@ -355,20 +353,16 @@ fn keysym_to_keycode<Conn: ?Sized + RequestConnection>(
         .reply()
         .unwrap();
 
-    let syms_per_code = mapping.keysyms_per_keycode as usize;
-
-    for keycode_idx in 0..mapping.length() as usize / syms_per_code {
-        for keysym_idx in 0..syms_per_code {
-            if mapping.keysyms[keysym_idx + keycode_idx * syms_per_code] == keysym {
-                return Some(setup.min_keycode + keycode_idx as u8);
-            }
+    for (i, sym) in mapping.keysyms.iter().enumerate() {
+        if sym == &keysym {
+            return Some(setup.min_keycode + (i / mapping.keysyms_per_keycode as usize) as u8);
         }
     }
 
     None
 }
 
-pub fn find_keycodes<Conn: ?Sized + RequestConnection>(conn: &Conn, setup: &Setup) -> [Keycode; 4] {
+pub fn get_keycodes<Conn: ?Sized + RequestConnection>(conn: &Conn, setup: &Setup) -> [Keycode; 4] {
     let mut codes = [0; 4];
 
     for (i, sym) in [XK_A, XK_D, XK_K, XK_J].iter().enumerate() {
