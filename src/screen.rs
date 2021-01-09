@@ -1,9 +1,12 @@
 use crate::board;
 use crate::board::{Board, Color, Item, Move};
-use std::mem::MaybeUninit;
 use std::{thread, time};
-use x11::xlib::{Display, Window, XImage};
-use x11::{keysym, xlib, xtest};
+
+use x11rb::connection::RequestConnection;
+use x11rb::image::ImageOrder;
+use x11rb::image::*;
+use x11rb::protocol::xproto::*;
+use x11rb::protocol::xtest;
 
 pub const KEY_DELAY_MILLIS: u64 = 17;
 const KEY_DELAY: time::Duration = time::Duration::from_millis(KEY_DELAY_MILLIS);
@@ -19,21 +22,16 @@ const BOARD_PIXEL_HEIGHT_ITEMS: usize = 810 - BOARD_Y_OFFSET;
 const PIXEL_X_OFFSET: usize = 30;
 const PIXEL_MATCH_OFFSET: usize = 507 - BOARD_X_OFFSET - PIXEL_X_OFFSET;
 
-const WINDOW_WIDTH: usize = 1920;
-const WINDOW_HEIGHT: usize = 1080;
+const WINDOW_WIDTH: u16 = 1920;
+const WINDOW_HEIGHT: u16 = 1080;
 
-const XIMAGE_BYTE_ORDER: i32 = xlib::LSBFirst;
-const XIMAGE_BITMAP_UNIT: i32 = 32;
-const XIMAGE_BITMAP_BIT_ORDER: i32 = xlib::LSBFirst;
-const XIMAGE_BITMAP_PAD: i32 = 32;
-const XIMAGE_DEPTH: i32 = 24;
-const XIMAGE_BYTES_PER_LINE_FULL_WINDOW: i32 = 4 * WINDOW_WIDTH as i32;
-const XIMAGE_BITS_PER_PIXEL: i32 = 32;
-const XIMAGE_RED_MASK: u64 = 0xFF0000;
-const XIMAGE_GREEN_MASK: u64 = 0xFF00;
-const XIMAGE_BLUE_MASK: u64 = 0xFF;
+// verified by validate_window()
+const BYTES_PER_PIXEL: usize = 4;
 
-const BYTES_PER_PIXEL: usize = XIMAGE_BITS_PER_PIXEL as usize / 8;
+const XK_A: u32 = 0x0061;
+const XK_D: u32 = 0x0064;
+const XK_J: u32 = 0x006a;
+const XK_K: u32 = 0x006b;
 
 const YELLOW_BOMB_PIXEL: [u8; 4] = [7, 27, 29, 0];
 const CYAN_BOMB_PIXEL: [u8; 4] = [45, 40, 3, 0];
@@ -81,21 +79,20 @@ const PHAGE_PINK_DATA: [u8; 32] = [
 
 const MATCH_OUTLINE_DATA: [u8; 8] = [255, 255, 255, 0, 255, 255, 255, 0];
 
-fn screenshot_game(display: *mut Display, window: Window) -> *mut XImage {
-    let img_ptr = unsafe {
-        xlib::XGetImage(
-            display,
-            window,
-            BOARD_X_OFFSET as i32,
-            BOARD_Y_OFFSET as i32,
-            BOARD_PIXEL_WIDTH as u32,
-            BOARD_PIXEL_HEIGHT as u32,
-            xlib::XAllPlanes(),
-            xlib::ZPixmap,
-        )
-    };
-    assert!(!img_ptr.is_null(), "Failed to get window image.");
-    img_ptr
+fn screenshot_game<Conn: ?Sized + RequestConnection>(conn: &Conn, window: Window) -> Vec<u8> {
+    conn.get_image(
+        ImageFormat::Z_PIXMAP,
+        window,
+        BOARD_X_OFFSET as i16,
+        BOARD_Y_OFFSET as i16,
+        BOARD_PIXEL_WIDTH as u16,
+        BOARD_PIXEL_HEIGHT as u16,
+        !0,
+    )
+    .unwrap()
+    .reply()
+    .unwrap()
+    .data
 }
 
 fn coord_to_offset(x: usize, y: usize) -> usize {
@@ -212,18 +209,13 @@ fn find_held(data: &[u8], phage_col: usize) -> Option<Item> {
     }
 }
 
-pub fn get_board_from_window(display: *mut Display, window: Window) -> Option<Board> {
-    let img_ptr = screenshot_game(display, window);
-    let image = unsafe { &mut *img_ptr };
-    let image_data = unsafe {
-        std::slice::from_raw_parts(
-            image.data as *mut u8,
-            BOARD_PIXEL_HEIGHT * BOARD_PIXEL_WIDTH * BYTES_PER_PIXEL,
-        )
-    };
-    defer! {{ unsafe { xlib::XDestroyImage(img_ptr); } }}
+pub fn get_board_from_window<Conn: ?Sized + RequestConnection>(
+    conn: &Conn,
+    window: Window,
+) -> Option<Board> {
+    let image_data = screenshot_game(conn, window);
 
-    let y_offset = match find_y_offset(image_data) {
+    let y_offset = match find_y_offset(&image_data) {
         Some(y) => y,
         None => {
             println!("Could not find board y offset");
@@ -236,11 +228,11 @@ pub fn get_board_from_window(display: *mut Display, window: Window) -> Option<Bo
         let x = col * ITEM_SIZE + PIXEL_X_OFFSET;
         for row in 0..board::MAX_ROWS {
             let y = row * ITEM_SIZE + y_offset;
-            items[row][col] = item_from_data(image_data, x, y);
+            items[row][col] = item_from_data(&image_data, x, y);
         }
     }
 
-    let phage_col = match find_phage_col(image_data) {
+    let phage_col = match find_phage_col(&image_data) {
         Some(col) => col,
         None => {
             println!("Could not find phage column");
@@ -248,7 +240,7 @@ pub fn get_board_from_window(display: *mut Display, window: Window) -> Option<Bo
         }
     };
 
-    let held = match find_held(image_data, phage_col) {
+    let held = match find_held(&image_data, phage_col) {
         Some(h) => h,
         None => {
             println!("Could not read held item");
@@ -259,207 +251,186 @@ pub fn get_board_from_window(display: *mut Display, window: Window) -> Option<Bo
     Some(board::make_board(phage_col, held, items))
 }
 
-pub fn get_exapunks_window(display: *mut Display) -> Window {
-    fn get_win_rec(display: *mut Display, window: Window) -> Option<Window> {
-        let mut name_ptr = MaybeUninit::uninit();
-        let status = unsafe { xlib::XFetchName(display, window, name_ptr.as_mut_ptr()) };
+pub fn get_exapunks_window<Conn: ?Sized + RequestConnection>(
+    conn: &Conn,
+    window: Window,
+) -> Option<Window> {
+    let reply = conn
+        .get_property(false, window, AtomEnum::WM_NAME, AtomEnum::STRING, 0, 64)
+        .unwrap()
+        .reply()
+        .unwrap();
 
-        if status != 0 {
-            let name_ptr = unsafe { name_ptr.assume_init() };
-            defer! {{ unsafe { xlib::XFree(name_ptr as *mut std::ffi::c_void); } }}
+    let wm_name = String::from_utf8_lossy(&reply.value);
 
-            match unsafe { std::ffi::CStr::from_ptr(name_ptr) }.to_str() {
-                Ok(name) => {
-                    if name == "EXAPUNKS" {
-                        return Some(window);
-                    }
-                }
-                Err(_) => (),
-            }
-        }
+    println!("{}", wm_name);
 
-        let mut root = MaybeUninit::uninit();
-        let mut parent = MaybeUninit::uninit();
-        let mut child_ptr = MaybeUninit::uninit();
-        let mut num_child = MaybeUninit::uninit();
-
-        unsafe {
-            let status = xlib::XQueryTree(
-                display,
-                window,
-                root.as_mut_ptr(),
-                parent.as_mut_ptr(),
-                child_ptr.as_mut_ptr(),
-                num_child.as_mut_ptr(),
-            );
-            assert_ne!(status, 0, "Failed to query X tree.");
-        }
-
-        let _root = unsafe { root.assume_init() };
-        let _parent = unsafe { parent.assume_init() };
-        let child_ptr = unsafe { child_ptr.assume_init() };
-        let num_child = unsafe { num_child.assume_init() };
-
-        defer! {{ unsafe { xlib::XFree(child_ptr as *mut std::ffi::c_void); } }};
-
-        let children = unsafe { std::slice::from_raw_parts(child_ptr, num_child as usize) };
-
-        for child in children {
-            match get_win_rec(display, *child) {
-                Some(win) => return Some(win),
-                None => (),
-            }
-        }
-
-        None
+    if wm_name == "EXAPUNKS" {
+        return Some(window);
     }
 
-    let window = unsafe { xlib::XDefaultRootWindow(display) };
-    match get_win_rec(display, window) {
-        Some(win) => win,
-        None => panic!("Failed to get Exapunks window"),
+    let children = conn.query_tree(window).unwrap().reply().unwrap().children;
+
+    for child in children {
+        match get_exapunks_window(conn, child) {
+            Some(win) => return Some(win),
+            None => (),
+        }
     }
+
+    None
 }
 
-pub fn validate_window(display: *mut Display, window: Window) {
-    macro_rules! expect_assert {
-        ($s:ident, $p:ident, $v:expr) => {{
-            let val = $v;
-            let real = $s.$p;
-            assert_eq!(
-                real, val,
-                concat!("Expected ", stringify!($p), " = {}, but found {}"),
-                val, real
-            );
-        }};
-    }
+pub fn validate_window<Conn: ?Sized + RequestConnection>(
+    conn: &Conn,
+    setup: &Setup,
+    screen: &Screen,
+    window: Window,
+) {
+    let geometry = conn.get_geometry(window).unwrap().reply().unwrap();
 
-    let window_attrs = unsafe {
-        let mut attrs_ptr = MaybeUninit::uninit();
-        let status = xlib::XGetWindowAttributes(display, window, attrs_ptr.as_mut_ptr());
-        assert_ne!(status, 0, "Failed to get window attributes");
-        attrs_ptr.assume_init()
-    };
+    assert_eq!(geometry.width, WINDOW_WIDTH);
+    assert_eq!(geometry.height, WINDOW_HEIGHT);
 
-    expect_assert!(window_attrs, width, WINDOW_WIDTH as i32);
-    expect_assert!(window_attrs, height, WINDOW_HEIGHT as i32);
-
-    let img_ptr = unsafe {
-        xlib::XGetImage(
-            display,
+    let image_reply = conn
+        .get_image(
+            ImageFormat::Z_PIXMAP,
             window,
             0,
             0,
-            WINDOW_WIDTH as u32,
-            WINDOW_HEIGHT as u32,
-            xlib::XAllPlanes(),
-            xlib::ZPixmap,
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
+            !0,
         )
-    };
-    assert!(!img_ptr.is_null(), "Failed to get window image");
+        .unwrap()
+        .reply()
+        .unwrap();
 
-    let image = unsafe { &mut *img_ptr };
-    defer! {{ unsafe { xlib::XDestroyImage(img_ptr); } }}
+    let visual_id = image_reply.visual;
 
-    expect_assert!(image, byte_order, XIMAGE_BYTE_ORDER);
-    expect_assert!(image, bitmap_unit, XIMAGE_BITMAP_UNIT);
-    expect_assert!(image, bitmap_bit_order, XIMAGE_BITMAP_BIT_ORDER);
-    expect_assert!(image, bitmap_pad, XIMAGE_BITMAP_PAD);
-    expect_assert!(image, depth, XIMAGE_DEPTH);
-    expect_assert!(image, bytes_per_line, XIMAGE_BYTES_PER_LINE_FULL_WINDOW);
-    expect_assert!(image, bits_per_pixel, XIMAGE_BITS_PER_PIXEL);
-    expect_assert!(image, red_mask, XIMAGE_RED_MASK);
-    expect_assert!(image, green_mask, XIMAGE_GREEN_MASK);
-    expect_assert!(image, blue_mask, XIMAGE_BLUE_MASK);
+    let image = Image::get_from_reply(setup, WINDOW_WIDTH, WINDOW_HEIGHT, image_reply).unwrap();
 
-    for y in 0..30 {
-        for x in 0..30 {
-            let correct_pixel = unsafe { xlib::XGetPixel(image, x, y) };
-            let correct = (
-                (correct_pixel & XIMAGE_RED_MASK) >> 16,
-                (correct_pixel & XIMAGE_GREEN_MASK) >> 8,
-                correct_pixel & XIMAGE_BLUE_MASK,
-            );
+    assert_eq!(image.scanline_pad(), ScanlinePad::Pad32);
+    assert_eq!(image.depth(), 24u8);
+    assert_eq!(image.bits_per_pixel(), BitsPerPixel::B32);
 
-            let data_offset =
-                XIMAGE_BYTES_PER_LINE_FULL_WINDOW * y + (XIMAGE_BITS_PER_PIXEL / 8) * x;
-            let test_pixel = unsafe { *(image.data.offset(data_offset as isize) as *const u64) };
-            let test = (
-                (test_pixel & image.red_mask) >> 16,
-                (test_pixel & image.green_mask) >> 8,
-                test_pixel & image.blue_mask,
-            );
+    let visual_type = screen
+        .allowed_depths
+        .iter()
+        .find(|d| d.depth == image.depth())
+        .unwrap()
+        .visuals
+        .iter()
+        .find(|v| v.visual_id == visual_id)
+        .unwrap();
 
-            assert_eq!(
-                correct, test,
-                "Failed pixel check, x: {}, y: {}, correct: {:?}, test: {:?}",
-                x, y, correct, test
-            );
+    assert_eq!(visual_type.red_mask, 0x00ff0000);
+    assert_eq!(visual_type.green_mask, 0x0000ff00);
+    assert_eq!(visual_type.blue_mask, 0x000000ff);
+}
+
+pub fn activate_window<Conn: ?Sized + RequestConnection>(conn: &Conn, window: Window) {
+    conn.set_input_focus(InputFocus::NONE, window, x11rb::CURRENT_TIME)
+        .unwrap()
+        .check()
+        .unwrap();
+
+    let mut config = ConfigureWindowAux::new();
+    config.stack_mode = Some(StackMode::ABOVE);
+    conn.configure_window(window, &config)
+        .unwrap()
+        .check()
+        .unwrap();
+
+    // thread::sleep(time::Duration::from_millis(50));
+}
+
+fn keysym_to_keycode<Conn: ?Sized + RequestConnection>(
+    conn: &Conn,
+    setup: &Setup,
+    keysym: Keysym,
+) -> Option<Keycode> {
+    let mapping = conn
+        .get_keyboard_mapping(setup.min_keycode, setup.max_keycode - setup.min_keycode + 1)
+        .unwrap()
+        .reply()
+        .unwrap();
+
+    let syms_per_code = mapping.keysyms_per_keycode as usize;
+
+    for keycode_idx in 0..mapping.length() as usize / syms_per_code {
+        for keysym_idx in 0..syms_per_code {
+            if mapping.keysyms[keysym_idx + keycode_idx * syms_per_code] == keysym {
+                return Some(setup.min_keycode + keycode_idx as u8);
+            }
         }
     }
+
+    None
 }
 
-pub fn activate_window(display: *mut Display, window: Window) {
-    unsafe {
-        xlib::XSetInputFocus(display, window, xlib::RevertToNone, xlib::CurrentTime);
-        xlib::XRaiseWindow(display, window);
-        xlib::XSync(display, xlib::False);
-        thread::sleep(time::Duration::from_millis(50));
+pub fn find_keycodes<Conn: ?Sized + RequestConnection>(conn: &Conn, setup: &Setup) -> [Keycode; 4] {
+    let mut codes = [0; 4];
+
+    for (i, sym) in [XK_A, XK_D, XK_K, XK_J].iter().enumerate() {
+        match keysym_to_keycode(conn, setup, *sym) {
+            Some(code) => codes[i] = code,
+            None => panic!("No keycode for keysym: {}", sym),
+        }
     }
+
+    codes
 }
 
-fn send_key(display: *mut Display, key: xlib::KeySym) {
-    unsafe {
-        let key_code = xlib::XKeysymToKeycode(display, key);
-        xtest::XTestFakeKeyEvent(display, key_code as u32, xlib::True, 0);
-        xlib::XSync(display, xlib::False);
-        thread::sleep(KEY_DELAY);
-        xtest::XTestFakeKeyEvent(display, key_code as u32, xlib::False, 0);
-        xlib::XSync(display, xlib::False);
-        thread::sleep(KEY_DELAY);
-    }
+fn send_key<Conn: ?Sized + RequestConnection>(conn: &Conn, key: Keycode) {
+    // opcodes found in xproto.h
+    // opcode for key press is 2
+    // opcode for key release is 3
+    xtest::fake_input(conn, 2, key, x11rb::CURRENT_TIME, x11rb::NONE, 0, 0, 0)
+        .unwrap()
+        .check()
+        .unwrap();
+
+    thread::sleep(KEY_DELAY);
+
+    xtest::fake_input(conn, 3, key, x11rb::CURRENT_TIME, x11rb::NONE, 0, 0, 0)
+        .unwrap()
+        .check()
+        .unwrap();
+
+    thread::sleep(KEY_DELAY);
 }
 
-pub fn move_left(display: *mut Display) {
-    send_key(display, keysym::XK_a as xlib::KeySym);
-}
-
-pub fn move_right(display: *mut Display) {
-    send_key(display, keysym::XK_d as xlib::KeySym);
-}
-
-pub fn swap(display: *mut Display) {
-    send_key(display, keysym::XK_k as xlib::KeySym);
-}
-
-pub fn exchange(display: *mut Display) {
-    send_key(display, keysym::XK_j as xlib::KeySym);
-}
-
-pub fn play_path(display: *mut Display, path: Vec<Move>) {
+pub fn play_path<Conn: ?Sized + RequestConnection>(
+    conn: &Conn,
+    codes: &[Keycode],
+    path: Vec<Move>,
+) {
     for m in path {
         match m {
-            Move::Left => move_left(display),
-            Move::Right => move_right(display),
-            Move::Swap => swap(display),
-            Move::Exchange => exchange(display),
+            Move::Left => send_key(conn, codes[0]),     // a
+            Move::Right => send_key(conn, codes[1]),    // d
+            Move::Swap => send_key(conn, codes[2]),     // k
+            Move::Exchange => send_key(conn, codes[3]), // j
         }
     }
 }
 
 // checks that the board is seen twice in a row and is different from the given board
-pub fn get_new_board(display: *mut Display, window: Window, prev_board: &mut Board) {
+pub fn get_new_board<Conn: ?Sized + RequestConnection>(
+    conn: &Conn,
+    window: Window,
+    prev_board: &Board,
+) -> Board {
     // let mut failed = 0;
     loop {
-        match get_board_from_window(display, window) {
+        match get_board_from_window(conn, window) {
             Some(board) => {
                 if board != *prev_board {
-                    *prev_board = board;
-                    break;
+                    return board;
                 }
             }
             None => thread::sleep(RECHECK_WAIT_TIME),
         }
     }
 }
-

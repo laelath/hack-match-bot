@@ -7,5 +7,4 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-x11 = { version = "2.18", features = ["xlib", "xtest"] }
-scopeguard = "1.0"
+x11rb = { version = "0.8.0", features = ["image", "xtest"] }

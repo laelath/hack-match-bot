@@ -1,16 +1,13 @@
 mod board;
 mod screen;
 
-#[macro_use(defer)]
-extern crate scopeguard;
-
 use board::{Board, Item, Move};
 
 use std::collections::{HashSet, VecDeque};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use x11::xlib;
+use x11rb::connection::Connection;
 
 const MAX_SEARCH_TIME: Duration = Duration::from_millis(110);
 const SOLVE_WAIT_TIME: Duration = Duration::from_millis(4 * screen::KEY_DELAY_MILLIS + 12);
@@ -109,17 +106,22 @@ fn find_match(start: &Board) -> Vec<Move> {
 }
 
 fn main() {
-    let display = unsafe { xlib::XOpenDisplay(std::ptr::null()) };
-    assert!(!display.is_null(), "Failed to get display");
-    defer! {{ unsafe { xlib::XCloseDisplay(display); } }}
+    let (conn, screen_num) = x11rb::connect(None).unwrap();
+    let setup = conn.setup();
+    let screen = &setup.roots[screen_num];
 
     println!("Finding EXAPUNKS window");
-    let window = screen::get_exapunks_window(display);
+    let window = match screen::get_exapunks_window(&conn, screen.root) {
+        Some(window) => window,
+        None => panic!("Unable to find EXAPUNKS window."),
+    };
 
     println!("Validating window parameters");
-    screen::validate_window(display, window);
+    screen::validate_window(&conn, &setup, &screen, window);
 
-    screen::activate_window(display, window);
+    let keycodes = screen::find_keycodes(&conn, &setup);
+
+    screen::activate_window(&conn, window);
 
     let mut board = board::make_board(
         0,
@@ -129,14 +131,14 @@ fn main() {
     let mut generation = 0;
 
     loop {
-        screen::get_new_board(display, window, &mut board);
+        board = screen::get_new_board(&conn, window, &board);
 
         println!("Generation: {}", generation);
         board.print();
         println!("Solving board");
         let path = find_match(&board);
         println!("Playing path {:?}", path);
-        screen::play_path(display, path);
+        screen::play_path(&conn, &keycodes, path);
         generation += 1;
         println!();
         thread::sleep(SOLVE_WAIT_TIME);
