@@ -3,7 +3,6 @@ use crate::board::{Board, Color, Item, Move};
 use std::{thread, time};
 
 use x11rb::connection::RequestConnection;
-use x11rb::image::ImageOrder;
 use x11rb::image::*;
 use x11rb::protocol::xproto::*;
 use x11rb::protocol::xtest;
