@@ -12,3 +12,7 @@ cargo build --release
 ## Running
  * Set the option `HACK*MATCH CRT EFFECT` to `NO DISTORTION`.
  * Set the EXAPUNKS window to 1920 X 1080 or fullscreen on a 1080p monitor.
+ 
+ ```
+ cargo run --release
+ ```
